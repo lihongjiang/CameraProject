@@ -1,26 +1,25 @@
 package com.supets.camera.camera2;
 
+import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.ImageFormat;
 import android.hardware.Camera;
+import android.media.AudioManager;
+import android.media.ExifInterface;
 import android.os.Bundle;
+import android.os.Environment;
 import android.support.annotation.Nullable;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
+import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
+import android.view.View;
 import android.widget.FrameLayout;
 
+import java.io.FileOutputStream;
 import java.util.List;
-
-/**
- * CameraProject
- *
- * @user lihongjian
- * g
- * @description
- * @date 2017/9/8
- * @updatetime 2017/9/8
- */
 
 public class BaseCameraActivity extends AppCompatActivity implements Camera.PreviewCallback, SurfaceHolder.Callback {
 
@@ -28,19 +27,29 @@ public class BaseCameraActivity extends AppCompatActivity implements Camera.Prev
     Camera mCammera;
     SurfaceView mSurfaceView;
     SurfaceHolder mSurfaceHolder;
-    int mCammeraId = 0;
-    private int width = 720;
-    private int height = 480;
+    int mCammeraId = 1;
+    private int width = 1280;
+    private int height = 720;
 
+    private MyOrientationDetector  detector;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         mSurfaceView = new SurfaceView(this);
-        mSurfaceView.setLayoutParams(new FrameLayout.LayoutParams(720, -2));
+        mSurfaceView.setLayoutParams(new FrameLayout.LayoutParams(-1, -1));
         setContentView(mSurfaceView);
         mSurfaceHolder = mSurfaceView.getHolder();
         mSurfaceHolder.addCallback(this);
+
+        detector= new MyOrientationDetector(this);
+
+        mSurfaceView.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                takepicture();
+            }
+        });
     }
 
     @Override
@@ -72,14 +81,17 @@ public class BaseCameraActivity extends AppCompatActivity implements Camera.Prev
 
             //设置预览大小
             parameters.setPreviewSize(width, height);
+            parameters.setPreviewFormat(ImageFormat.NV21);
             //设置拍照大小
             parameters.setPictureSize(width, height);
-            parameters.setPictureFormat(ImageFormat.NV21);
+            parameters.setPictureFormat(ImageFormat.JPEG);
 
             //设置预览方向
-            mCammera.setDisplayOrientation(90);//竖屏
+            //mCammera.setDisplayOrientation(90);//竖屏
+            setCameraDisplayOrientation();
             //设置拍照方向
-            parameters.setRotation(0);
+            parameters.setRotation(0);//图像数据里面不一定有这个值,这个值不一定起作用
+            parameters.set("rotation",0);
 
             List<Camera.Size> pictureSizes = parameters.getSupportedPictureSizes();
             for (Camera.Size size : pictureSizes) {
@@ -101,6 +113,38 @@ public class BaseCameraActivity extends AppCompatActivity implements Camera.Prev
 
     }
 
+
+    private void setCameraDisplayOrientation() {
+        Camera.CameraInfo info = new Camera.CameraInfo();
+        Camera.getCameraInfo(mCammeraId, info);
+        int rotation = getWindowManager().getDefaultDisplay().getRotation();
+        int degrees = 0;
+        switch (rotation) {
+            case Surface.ROTATION_0:
+                degrees = 0;
+                break;
+            case Surface.ROTATION_90:
+                degrees = 90;
+                break;
+            case Surface.ROTATION_180:
+                degrees = 180;
+                break;
+            case Surface.ROTATION_270:
+                degrees = 270;
+                break;
+        }
+
+        int result;
+        if (info.facing == Camera.CameraInfo.CAMERA_FACING_FRONT) {
+            result = (info.orientation + degrees) % 360;
+            result = (360 - result) % 360; // compensate the mirror
+        } else { // back-facing
+            result = (info.orientation - degrees + 360) % 360;
+        }
+        mCammera.setDisplayOrientation(result);
+    }
+
+
     public void destoryCamera() {
         if (mCammera == null) {
             return;
@@ -120,7 +164,7 @@ public class BaseCameraActivity extends AppCompatActivity implements Camera.Prev
     @Override
     public void onPreviewFrame(byte[] bytes, Camera camera) {
         Camera.Size size = camera.getParameters().getPreviewSize();
-        Log.d("getPreviewSize", "width=" + size.width + ",height=" + size.height);
+        //Log.d("getPreviewSize", "width=" + size.width + ",height=" + size.height);
     }
 
     @Override
@@ -133,12 +177,86 @@ public class BaseCameraActivity extends AppCompatActivity implements Camera.Prev
     public void surfaceChanged(SurfaceHolder surfaceHolder, int format, int width,
                                int height) {
         Log.d("surfaceChanged", "width=" + width + ",height=" + height);
-        this.width=width;
-        this.height=height;
+        this.width = width;
+        this.height = height;
     }
 
     @Override
     public void surfaceDestroyed(SurfaceHolder surfaceHolder) {
         destoryCamera();
+    }
+
+
+    public void takepicture() {
+        setRotation();
+        mCammera.takePicture(new Camera.ShutterCallback() {
+            @Override
+            public void onShutter() {
+                AudioManager mgr = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+                mgr.playSoundEffect(AudioManager.FLAG_PLAY_SOUND);
+            }
+        }, null, new Camera.PictureCallback() {
+            @Override
+            public void onPictureTaken(byte[] bytes, Camera camera) {
+                Camera.Size size = camera.getParameters().getPictureSize();
+                Log.d("onPictureTaken", "width=" + size.width + ",height=" + size.height);
+                Log.d("onPictureTaken", "width=" + bytes.length);
+
+
+                BitmapFactory.Options options = new BitmapFactory.Options();
+                options.inJustDecodeBounds = true;//不会存在bitmap，只能解析出基本图形信息
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.length,
+                        options);
+                int originalFileHeight = options.outHeight;
+                int originalfileWidth = options.outWidth;
+                Log.d("onPictureTaken", "originalfileWidth=" + originalfileWidth
+                        + ",originalFileHeight=" + originalFileHeight);
+
+                options.inJustDecodeBounds = false;
+                Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length,
+                        options);
+                Log.d("onPictureTaken", "originalfileWidth=" + bitmap.getWidth()
+                        + ",originalFileHeight=" + bitmap.getHeight());
+
+                String path=Environment.getExternalStorageDirectory().getAbsolutePath() + "/test.jpg";
+                try {
+                    FileOutputStream outputStream = new FileOutputStream(path);
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream);
+                    outputStream.close();
+
+                    ExifInterface rotate = new ExifInterface(path);
+                    Log.d("rotate", "rotate=" + rotate.getAttribute(ExifInterface.TAG_ORIENTATION));
+
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+
+
+
+                mCammera.startPreview();
+            }
+        });
+    }
+
+    private void setRotation() {
+        if (mCammera!=null){
+            int orientation = detector.getOrientation();
+            Camera.Parameters cameraParameter = mCammera.getParameters();
+            cameraParameter.setRotation(90);
+            cameraParameter.set("rotation", 90);
+            if ((orientation >= 45) && (orientation < 135)) {
+                cameraParameter.setRotation(180);
+                cameraParameter.set("rotation", 180);
+            }
+            if ((orientation >= 135) && (orientation < 225)) {
+                cameraParameter.setRotation(270);
+                cameraParameter.set("rotation", 270);
+            }
+            if ((orientation >= 225) && (orientation < 315)) {
+                cameraParameter.setRotation(0);
+                cameraParameter.set("rotation", 0);
+            }
+            mCammera.setParameters(cameraParameter);
+        }
     }
 }
