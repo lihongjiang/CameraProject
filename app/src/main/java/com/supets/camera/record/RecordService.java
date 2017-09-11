@@ -33,9 +33,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * Created by baidu_lishuang10 on 16/3/22.
- */
 public class RecordService extends Service {
 
     private static final String TAG = "RService";

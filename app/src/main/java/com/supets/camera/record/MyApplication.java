@@ -4,9 +4,6 @@ import android.app.Application;
 import android.content.Intent;
 import android.media.projection.MediaProjectionManager;
 
-/**
- * Created by baidu_lishuang10 on 16/3/21.
- */
 public class MyApplication extends Application {
 
     public Intent getResultIntent() {

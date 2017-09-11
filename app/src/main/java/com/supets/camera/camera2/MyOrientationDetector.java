@@ -10,6 +10,7 @@ import android.view.OrientationEventListener;
  * @author zw.yan
  */
 public class MyOrientationDetector extends OrientationEventListener {
+
     int Orientation;
 
     public MyOrientationDetector(Context context) {
